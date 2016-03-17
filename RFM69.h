@@ -65,69 +65,15 @@
 #define RFM69_CTL_REQACK    0x40
 
 // 
-#define _ISRFM69HW  1
+#define ISRFM69HW  1
 
-class RFM69 {
-  public:
-
-    RFM69(uint8_t slaveSelectPin=RF69_SPI_CS, uint8_t interruptPin=RF69_IRQ_PIN, bool isRFM69HW=false, uint8_t interruptNum=RF69_IRQ_NUM) {
-      _slaveSelectPin = slaveSelectPin;
-      _interruptPin = interruptPin;
-      _interruptNum = interruptNum;
-      _mode = RF69_MODE_STANDBY;
-      _promiscuousMode = false;
-      _powerLevel = 31;
-      //_isRFM69HW = isRFM69HW;
-    }
-
+// module interface
+#define noInterrupts()      #error "Define function for disabling interrupts"
+#define interrupts()        #error "Define function for enabling interrupts"
+#define RFM69_SetCSPin(par) #error "Define function for controlling RFM69 CS pin"
+#define RFM69_ReadDIO0Pin() #error "Define function for reading RFM69 DIO0 pin"
+#define SPI_transfer8()     #error "Define function for SPI transfer 8 bit"
+#define Serialprint         #error "Define serial print function"   
     
-    
-    bool canSend();
-    virtual void send(uint8_t toAddress, const void* buffer, uint8_t bufferSize, bool requestACK=false);
-    virtual bool sendWithRetry(uint8_t toAddress, const void* buffer, uint8_t bufferSize, uint8_t retries=2, uint8_t retryWaitTime=40); // 40ms roundtrip req for 61byte packets
-    virtual bool receiveDone();
-    bool ACKReceived(uint8_t fromNodeID);
-    bool ACKRequested();
-    virtual void sendACK(const void* buffer = "", uint8_t bufferSize=0);
-    
-    
-    void encrypt(const char* key);
-    void setCS(uint8_t newSPISlaveSelect);
-    int16_t readRSSI(bool forceTrigger=false);
-    void promiscuous(bool onOff=true);
-    
-    
-    uint8_t readTemperature(uint8_t calFactor=0); // get CMOS temperature (8bit)
-    void rcCalibration(); // calibrate the internal RC oscillator for use in wide temperature variations - see datasheet section [4.3.5. RC Timer Accuracy]
-
-    // allow hacking registers by making these public
-    
-    void readAllRegs();
-
-  protected:
-    static void isr0();
-    void virtual interruptHandler();
-    virtual void interruptHook(uint8_t CTLbyte) {};
-    virtual void sendFrame(uint8_t toAddress, const void* buffer, uint8_t size, bool requestACK=false, bool sendACK=false);
-
-    static RFM69* selfPointer;
-    uint8_t _slaveSelectPin;
-    uint8_t _interruptPin;
-    uint8_t _interruptNum;
-    
-    bool _promiscuousMode;
-    uint8_t _powerLevel;
-    //bool _isRFM69HW;
-#if defined (SPCR) && defined (SPSR)
-    uint8_t _SPCR;
-    uint8_t _SPSR;
-#endif
-
-    virtual void receiveBegin();
-    
-    
-    virtual void select();
-    virtual void unselect();
-};
 
 #endif
