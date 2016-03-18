@@ -14,5 +14,5 @@ Supports RFM69W, RFM69HW, RFM69CW, RFM69HCW (semtech SX1231, SX1231H)
 - `extern void Timeout_SetTimeout1(uint16_t);` function for timeout handling, sets a timeout, parameter is in milliseconds (ms)
 
 ####Configure SPI before using library functions
-- set SPI CPOL= 0 and CPHA = 0 ( in Motorola/Freescale nomenclature)
+- set SPI CPOL= 0 and CPHA = 0 ( in Motorola/Freescale nomenclature), MSB first
 - maximum 10MHz SCK clock according to RFM69 datasheet
