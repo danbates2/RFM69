@@ -7,7 +7,7 @@ RFM69 C library port attempt from this arduino library: https://github.com/LowPo
 Supports RFM69W, RFM69HW, RFM69CW, RFM69HCW (semtech SX1231, SX1231H)
 
 ### To be able to use this library:
-#### Please define in your project these platform specific functions defined as extern in RFM69.h:
+#### Please define in your project these platform specific functions defined in RFM69_ext.c:
 
 - `void RFM69_RST(void);`            function to reset the RFM69 (optional)
 - `void noInterrupts();`             function to disable interrupts
