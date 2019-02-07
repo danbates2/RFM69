@@ -31,52 +31,97 @@
 #include <RFM69.h>
 #include <RFM69registers.h>
 #include <RFM69_ext.h>
+#include "usart.h"
 
+#define JEECOMPAT
 
 char log_buffer[150];
-uint8_t data[RF69_MAX_DATA_LEN]; // recv/xmit buf, including header & crc bytes
-#define RFM69_DATA(x) data[x] // function to grab specific bytes from data[]
+uint8_t data[RF69_MAX_DATA_LEN];  // recv/xmit buf, including header & crc bytes
+#define RFM69_DATA(x) data[x]     // function to grab specific bytes from data[]
 uint8_t datalen;
 uint8_t senderID;
-uint8_t targetID;                // should match _address
+uint8_t targetID;                 // should match _address
 uint8_t payloadLen;
 uint8_t ACK_Requested;
-uint8_t ACK_RECEIVED;           // should be polled immediately after sending a packet with ACK request
+uint8_t ACK_RECEIVED;             // should be polled immediately after sending a packet with ACK request
 uint8_t _mode;
-int16_t rssi;                   // most accurate RSSI during reception (closest to the reception)
+int16_t rssi;                     // most accurate RSSI during reception (closest to the reception)
 
 uint8_t _address;
 uint8_t _powerLevel = 31;
-bool _promiscuousMode = false;
+bool _promiscuousMode = true;
 uint8_t _mode = RF69_MODE_STANDBY;
 
+//uint32_t hz = 433;
+void RFM69_setFrequencyJee(uint32_t hz) {
+  // accept any frequency scale as input, including KHz and MHz
+  // multiply by 10 until freq >= 100 MHz (don't specify 0 as input!)
+  while (hz < 100000000)
+    hz *= 10;
 
-
+  // Frequency steps are in units of (32,000,000 >> 19) = 61.03515625 Hz
+  // use multiples of 64 to avoid multi-precision arithmetic, i.e. 3906.25 Hz
+  // due to this, the lower 6 bits of the calculated factor will always be 0
+  // this is still 4 ppm, i.e. well below the radio's 32 MHz crystal accuracy
+  // 868.0 MHz = 0xD90000, 868.3 MHz = 0xD91300, 915.0 MHz = 0xE4C000
+  uint32_t frf = (hz << 2) / (32000000L >> 11);
+  RFM69_writeReg(REG_FRFMSB, frf >> 10);
+  RFM69_writeReg(REG_FRFMSB+1, frf >> 2);
+  RFM69_writeReg(REG_FRFMSB+2, frf << 6);
+  sprintf(log_buffer, "msb mid lsb= %ld %ld %ld\r\n", frf >> 10,frf >> 2,frf << 6);
+  debug_printf(log_buffer);
+}
 
 bool RFM69_initialize(uint16_t freqBand, uint8_t nodeID, uint16_t networkID)
 {
-  const uint8_t CONFIG[][2] =
-  {
+  const uint8_t CONFIG[][2] =  {
+      #ifdef JEECOMPAT
+        //* 0x01 */ { REG_OPMODE, RF_OPMODE_SEQUENCER_ON | RF_OPMODE_LISTEN_OFF | RF_OPMODE_STANDBY },
+        {0x01, 0x04}, // OpMode = standby
+        {0x02, 0x00}, // DataModul = packet mode, fsk
+        {0x03, 0x02}, // BitRateMsb, data rate = 49,261 khz
+        {0x04, 0x8A}, // BitRateLsb, divider = 32 MHz / 650
+        {0x05, 0x05}, // FdevMsb = 90 KHz
+        {0x06, 0xC3}, // FdevLsb = 90 KHz .......
+//{0x0B, 0x20}, // Low M
+//{0x19, 0x4A}, // RxBw 100 KHz
+  /* 0x19 */ { REG_RXBW, RF_RXBW_DCCFREQ_010 | RF_RXBW_MANT_16 | RF_RXBW_EXP_2 }, // (BitRate < 2 * RxBw)
+//{0x1A, 0x42}, // AfcBw 125 KHz
+//{0x1E, 0x0C}, // AfcAutoclearOn, AfcAutoOn
+{0x25, 0x40}, //0x80, // DioMapping1 = SyncAddress (Rx)
+{0x26, 0x07}, // disable clkout
+/* 0x28 */ { REG_IRQFLAGS2, RF_IRQFLAGS2_FIFOOVERRUN }, // writing to this bit ensures that the FIFO & status flags are reset
+{0x29, 220}, // RssiThresh
+//{0x2D, 0x05}, // PreambleSize = 5
+//{0x2D, 0x03}, // PreambleSize = 3
+{0x2E, 0x88}, // SyncConfig = sync on, sync size = 2
+{0x2F, 0x2D}, // SyncValue1 = 0x2D
+/* 0x30 */ { REG_SYNCVALUE2, networkID }, // NETWORK ID
+/* 0x37 */ { REG_PACKETCONFIG1, RF_PACKET1_FORMAT_VARIABLE | RF_PACKET1_DCFREE_OFF | RF_PACKET1_CRC_ON | RF_PACKET1_CRCAUTOCLEAR_ON | RF_PACKET1_ADRSFILTERING_OFF },
+/* 0x38 */ { REG_PAYLOADLENGTH, 66 }, // in variable length mode: the max frame size, not used in TX
+//{0x37, 0xD0}, // PacketConfig1 = fixed, white, no filtering
+//{0x38, 0x42}, // PayloadLength = 0, unlimited
+/* 0x3C */ { REG_FIFOTHRESH, RF_FIFOTHRESH_TXSTART_FIFONOTEMPTY | RF_FIFOTHRESH_VALUE }, // TX on FIFO not empty
+/* 0x3D */ { REG_PACKETCONFIG2, RF_PACKET2_RXRESTARTDELAY_2BITS | RF_PACKET2_AUTORXRESTART_ON | RF_PACKET2_AES_OFF }, // RXRESTARTDELAY must match transmitter PA ramp-down time (bitrate dependent)
+//{0x3C, 0x8F}, // FifoTresh, not empty, level 15
+//{0x3D, 0x12}, // 0x10, // PacketConfig2, interpkt = 1, autorxrestart off
+{0x6F, 0x30}, // TestDagc ...
+//{0x71, 0x02}, // RegTestAfc
+
+    #else
+
     /* 0x01 */ { REG_OPMODE, RF_OPMODE_SEQUENCER_ON | RF_OPMODE_LISTEN_OFF | RF_OPMODE_STANDBY },
     /* 0x02 */ { REG_DATAMODUL, RF_DATAMODUL_DATAMODE_PACKET | RF_DATAMODUL_MODULATIONTYPE_FSK | RF_DATAMODUL_MODULATIONSHAPING_00 }, // no shaping
+
     /* 0x03 */ { REG_BITRATEMSB, RF_BITRATEMSB_55555}, // default: 4.8 KBPS
     /* 0x04 */ { REG_BITRATELSB, RF_BITRATELSB_55555},
+
     /* 0x05 */ { REG_FDEVMSB, RF_FDEVMSB_50000}, // default: 5KHz, (FDEV + BitRate / 2 <= 500KHz)
     /* 0x06 */ { REG_FDEVLSB, RF_FDEVLSB_50000},
 
     /* 0x07 */ { REG_FRFMSB, (freqBand == RF69_315MHZ ? RF_FRFMSB_315 : (freqBand == RF69_433MHZ ? RF_FRFMSB_433 : (freqBand == RF69_868MHZ ? RF_FRFMSB_868 : RF_FRFMSB_915))) },
     /* 0x08 */ { REG_FRFMID, (freqBand == RF69_315MHZ ? RF_FRFMID_315 : (freqBand == RF69_433MHZ ? RF_FRFMID_433 : (freqBand == RF69_868MHZ ? RF_FRFMID_868 : RF_FRFMID_915))) },
     /* 0x09 */ { REG_FRFLSB, (freqBand == RF69_315MHZ ? RF_FRFLSB_315 : (freqBand == RF69_433MHZ ? RF_FRFLSB_433 : (freqBand == RF69_868MHZ ? RF_FRFLSB_868 : RF_FRFLSB_915))) },
-    //* 0x07 */ { REG_FRFMSB, RF_FRFMSB_433 },
-    //* 0x08 */ { REG_FRFMID, RF_FRFMID_433 },
-    //* 0x09 */ { REG_FRFLSB, RF_FRFLSB_433 },
-    /*
-    // available frequency bands
-    #define RF69_315MHZ            315 // non trivial values to avoid misconfiguration
-    #define RF69_433MHZ            433
-    #define RF69_868MHZ            868
-    #define RF69_915MHZ            915
-    */
 
     // looks like PA1 and PA2 are not implemented on RFM69W, hence the max output power is 13dBm
     // +17dBm and +20dBm are possible on RFM69HW
@@ -91,6 +136,8 @@ bool RFM69_initialize(uint16_t freqBand, uint8_t nodeID, uint16_t networkID)
     //for BR-19200: /* 0x19 */ { REG_RXBW, RF_RXBW_DCCFREQ_010 | RF_RXBW_MANT_24 | RF_RXBW_EXP_3 },
     /* 0x25 */ { REG_DIOMAPPING1, RF_DIOMAPPING1_DIO0_01 }, // DIO0 is the only IRQ we're using
     /* 0x26 */ { REG_DIOMAPPING2, RF_DIOMAPPING2_CLKOUT_OFF }, // DIO5 ClkOut disable for power saving
+
+
     /* 0x28 */ { REG_IRQFLAGS2, RF_IRQFLAGS2_FIFOOVERRUN }, // writing to this bit ensures that the FIFO & status flags are reset
     /* 0x29 */ { REG_RSSITHRESH, 220 }, // must be set to dBm = (-Sensitivity / 2), default is 0xE4 = 228 so -114dBm
     ///* 0x2D */ { REG_PREAMBLELSB, RF_PREAMBLESIZE_LSB_VALUE } // default 3 preamble bytes 0xAAAAAA
@@ -106,7 +153,8 @@ bool RFM69_initialize(uint16_t freqBand, uint8_t nodeID, uint16_t networkID)
     /* 0x3D */ { REG_PACKETCONFIG2, RF_PACKET2_RXRESTARTDELAY_2BITS | RF_PACKET2_AUTORXRESTART_ON | RF_PACKET2_AES_OFF }, // RXRESTARTDELAY must match transmitter PA ramp-down time (bitrate dependent)
     //for BR-19200: /* 0x3D */ { REG_PACKETCONFIG2, RF_PACKET2_RXRESTARTDELAY_NONE | RF_PACKET2_AUTORXRESTART_ON | RF_PACKET2_AES_OFF }, // RXRESTARTDELAY must match transmitter PA ramp-down time (bitrate dependent)
     /* 0x6F */ { REG_TESTDAGC, RF_DAGC_IMPROVED_LOWBETA0 }, // run DAGC continuously in RX mode for Fading Margin Improvement, recommended default for AfcLowBetaOn=0
-    {255, 0}
+#endif
+{255, 0}
   };
   uint8_t i;
 
@@ -116,15 +164,17 @@ bool RFM69_initialize(uint16_t freqBand, uint8_t nodeID, uint16_t networkID)
     RFM69_writeReg(CONFIG[i][0], CONFIG[i][1]);
   }
 
-  // check written registers
-  for (i = 0; CONFIG[i][0] != 255; i++) {
-    if(CONFIG[i][0] != REG_IRQFLAGS2)
-    {
-      if(RFM69_readReg(CONFIG[i][0]) != CONFIG[i][1]) {
-        return false;
-      }
+#ifndef JEECOMPAT // if not defined.
+// check written registers
+for (i = 0; CONFIG[i][0] != 255; i++) {
+  if(CONFIG[i][0] != REG_IRQFLAGS2)
+  {
+    if(RFM69_readReg(CONFIG[i][0]) != CONFIG[i][1]) {
+      return false;
     }
   }
+}
+#endif
 
   // Encryption is persistent between resets and can trip you up during debugging.
   // Disable it during initialization so we always start from a known state.
@@ -350,6 +400,11 @@ static void RFM69_sendFrame(uint8_t toAddress, const void* buffer, uint8_t buffe
 }
 
 // internal function - interrupt gets called when a packet is received
+#ifdef JEECOMPAT
+uint8_t striplength = 2;
+#else
+uint8_t striplength = 3;
+#endif
 void RFM69_interruptHandler() {
 
   if (_mode == RF69_MODE_RX && (RFM69_readReg(REG_IRQFLAGS2) & RF_IRQFLAGS2_PAYLOADREADY))
@@ -359,11 +414,12 @@ void RFM69_interruptHandler() {
     RFM69_setMode(RF69_MODE_STANDBY);
     RFM69_select();
     SPI_transfer8(REG_FIFO & 0x7F);
+    SPI_transfer8(0);
     payloadLen = SPI_transfer8(0);
     payloadLen = payloadLen > 66 ? 66 : payloadLen; // precaution
-    targetID = SPI_transfer8(0);
+    //targetID = SPI_transfer8(0);
     if(!(_promiscuousMode || targetID == _address || targetID == RF69_BROADCAST_ADDR) // match this node's address, or broadcast address or anything in promiscuous mode
-       || payloadLen < 3) // address situation could receive packets that are malformed and don't fit this libraries extra fields
+       || payloadLen < striplength) // address situation could receive packets that are malformed and don't fit this libraries extra fields
     {
       payloadLen = 0;
       RFM69_unselect();
@@ -371,9 +427,9 @@ void RFM69_interruptHandler() {
       return;
     }
 
-    datalen = payloadLen - 3;
-    senderID = SPI_transfer8(0);
-    CTLbyte = SPI_transfer8(0);
+    datalen = payloadLen - striplength;
+    //senderID = SPI_transfer8(0);
+    //CTLbyte = SPI_transfer8(0);
 
     ACK_RECEIVED = CTLbyte & RFM69_CTL_SENDACK; // extract ACK-received flag
     ACK_Requested = CTLbyte & RFM69_CTL_REQACK; // extract ACK-requested flag
@@ -652,7 +708,7 @@ void RFM69_readAllRegs() {
       bitRate |= regVal;
       debug_printf("Bit Rate (Chip Rate when Manchester encoding is enabled)\r\nBitRate : ");
       uint64_t val = 32UL * 1000UL * 1000UL / bitRate;
-      sprintf(pcBuf, "%lld", val);
+      sprintf(pcBuf, "%ld", val);
       debug_printf(pcBuf);
       debug_printf("\r\n");
       break;
@@ -862,7 +918,6 @@ void PrintStruct(void) {
   }
 }
 
-
 // if the sending device is setup to send data structures NOT multiples of 4-bytes,
 // this is a manual method for decoding each byte into the relevant datatypes
 uint16_t firstdata = 0;
@@ -875,7 +930,6 @@ void PrintByteByByte(void) {
   sprintf(log_buffer, "second_data: %ld\r\n", seconddata);
   debug_printf(log_buffer);
 }
-
 
 // printing the raw bytes as received.
 void PrintRawBytes(void) {

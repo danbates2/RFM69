@@ -3,6 +3,7 @@
 #include "RFM69_ext.h"
 #include "gpio.h"
 #include "usart.h"
+#include "spi.h"
 #include <stdbool.h>
 #include <stdint.h>
 
