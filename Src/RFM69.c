@@ -48,7 +48,7 @@ uint8_t _mode;
 int16_t rssi;                     // most accurate RSSI during reception (closest to the reception)
 
 uint8_t _address;
-uint8_t _powerLevel = 31;
+uint8_t _powerLevel = 16; //31 max
 bool _promiscuousMode = true;
 uint8_t _mode = RF69_MODE_STANDBY;
 
