@@ -52,60 +52,8 @@ uint8_t _mode = RF69_MODE_STANDBY;
 
 
 
-// for the STM32, simple decoding of radio payloads into structs must happen in 4-byte blocks to avoid padding issues.
-// Valid types are: Long, Unsigned Long, and Float.
-// https://stackoverflow.com/questions/119123/why-isnt-sizeof-for-a-struct-equal-to-the-sum-of-sizeof-of-each-member
-typedef struct {
-  uint32_t nodeId; // store this nodeId
-  uint32_t uptime; // uptime in ms
-} dataSTR;
-dataSTR theData;
-// function below
-void PrintStruct(void) {
-  if (datalen != sizeof(dataSTR)) {
-    debug_printf("Invalid payload received, not matching data struct!\r\n");
-    }
-  else {
-    theData = *(dataSTR *)data;
-    sprintf(log_buffer, " nodeId=%ld\r\n", theData.nodeId);
-    debug_printf(log_buffer);
-    sprintf(log_buffer, " uptime=%ld\r\n", theData.uptime);
-    debug_printf(log_buffer);
-    //sprintf(log_buffer, " size of the struct=%d\r\n", sizeof(PayloadSTR));
-    //debug_printf(log_buffer); // 12
-  }
-}
 
-
-// if the sending device is setup to send data structures NOT multiples of 4-bytes,
-// this is a manual method for decoding each byte into the relevant datatypes
-uint16_t firstdata = 0;
-uint32_t seconddata = 0;
-void PrintByteByByte(void) {
-  firstdata = RFM69_DATA(0) + (RFM69_DATA(1) << 8);
-  seconddata = RFM69_DATA(2) + (RFM69_DATA(3) << 8) + (RFM69_DATA(4) << 16) + (RFM69_DATA(5) << 24);
-  sprintf(log_buffer, "first_data: %d\r\n", firstdata);
-  debug_printf(log_buffer);
-  sprintf(log_buffer, "second_data: %ld\r\n", seconddata);
-  debug_printf(log_buffer);
-}
-
-
-// printing the raw bytes as received.
-void PrintRawBytes(void) {
-  for (int i = 0; i < datalen; i++) {
-    sprintf(log_buffer, "Byte%d Value: %d\r\n", i, RFM69_DATA(i));
-    debug_printf(log_buffer);
-  }
-  // debugging
-  //sprintf(log_buffer, "PayloadLen = %d\r\n", payloadLen);
-  //debug_printf(log_buffer);
-  //sprintf(log_buffer, "datalen %d\r\n", datalen);
-  //debug_printf(log_buffer);
-}
-
-
-bool RFM69_initialize(uint8_t freqBand, uint8_t nodeID, uint16_t networkID)
+bool RFM69_initialize(uint16_t freqBand, uint8_t nodeID, uint16_t networkID)
 {
   const uint8_t CONFIG[][2] =
   {
@@ -887,4 +835,57 @@ void RFM69_unselect()
 {
   RFM69_SetCSPin(1);
   interrupts();
+}
+
+
+// for the STM32, simple decoding of radio payloads into structs must happen in 4-byte blocks to avoid padding issues.
+// Valid types are: Long, Unsigned Long, and Float.
+// https://stackoverflow.com/questions/119123/why-isnt-sizeof-for-a-struct-equal-to-the-sum-of-sizeof-of-each-member
+typedef struct {
+  uint32_t nodeId; // store this nodeId
+  uint32_t uptime; // uptime in ms
+} dataSTR;
+dataSTR theData;
+// function below
+void PrintStruct(void) {
+  if (datalen != sizeof(dataSTR)) {
+    debug_printf("Invalid payload received, not matching data struct!\r\n");
+    }
+  else {
+    theData = *(dataSTR *)data;
+    sprintf(log_buffer, " nodeId=%ld\r\n", theData.nodeId);
+    debug_printf(log_buffer);
+    sprintf(log_buffer, " uptime=%ld\r\n", theData.uptime);
+    debug_printf(log_buffer);
+    //sprintf(log_buffer, " size of the struct=%d\r\n", sizeof(PayloadSTR));
+    //debug_printf(log_buffer); // 12
+  }
+}
+
+
+// if the sending device is setup to send data structures NOT multiples of 4-bytes,
+// this is a manual method for decoding each byte into the relevant datatypes
+uint16_t firstdata = 0;
+uint32_t seconddata = 0;
+void PrintByteByByte(void) {
+  firstdata = RFM69_DATA(0) + (RFM69_DATA(1) << 8);
+  seconddata = RFM69_DATA(2) + (RFM69_DATA(3) << 8) + (RFM69_DATA(4) << 16) + (RFM69_DATA(5) << 24);
+  sprintf(log_buffer, "first_data: %d\r\n", firstdata);
+  debug_printf(log_buffer);
+  sprintf(log_buffer, "second_data: %ld\r\n", seconddata);
+  debug_printf(log_buffer);
+}
+
+
+// printing the raw bytes as received.
+void PrintRawBytes(void) {
+  for (int i = 0; i < datalen; i++) {
+    sprintf(log_buffer, "Byte%d Value: %d\r\n", i, RFM69_DATA(i));
+    debug_printf(log_buffer);
+  }
+  // debugging
+  //sprintf(log_buffer, "PayloadLen = %d\r\n", payloadLen);
+  //debug_printf(log_buffer);
+  //sprintf(log_buffer, "datalen %d\r\n", datalen);
+  //debug_printf(log_buffer);
 }
