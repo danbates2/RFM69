@@ -515,7 +515,7 @@ void RFM69_readAllRegs() {
 
   //... State Variables for intelligent decoding
   uint8_t modeFSK = 0;
-  uint64_t bitRate = 0;
+  uint32_t bitRate = 0;
   uint32_t freqDev = 0;
   uint32_t freqCenter = 0;
 #endif
@@ -651,7 +651,7 @@ void RFM69_readAllRegs() {
     case 0x4: {
       bitRate |= regVal;
       debug_printf("Bit Rate (Chip Rate when Manchester encoding is enabled)\r\nBitRate : ");
-      uint64_t val = 32UL * 1000UL * 1000UL / bitRate;
+      uint32_t val = 32UL * 1000UL * 1000UL / bitRate;
       sprintf(pcBuf, "%lld", val);
       debug_printf(pcBuf);
       debug_printf("\r\n");
