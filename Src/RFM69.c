@@ -46,7 +46,7 @@ uint8_t _mode;
 int16_t rssi;                   // most accurate RSSI during reception (closest to the reception)
 
 uint8_t _address;
-uint8_t _powerLevel = 16; // 31 max. don't set to max unless antenna is matched.
+uint8_t _powerLevel = 16; // 31 max
 bool _promiscuousMode = false;
 uint8_t _mode = RF69_MODE_STANDBY;
 
@@ -91,7 +91,7 @@ bool RFM69_initialize(uint16_t freqBand, uint8_t nodeID, uint16_t networkID)
     //for BR-19200: /* 0x19 */ { REG_RXBW, RF_RXBW_DCCFREQ_010 | RF_RXBW_MANT_24 | RF_RXBW_EXP_3 },
     /* 0x25 */ { REG_DIOMAPPING1, RF_DIOMAPPING1_DIO0_01 }, // DIO0 is the only IRQ we're using
     /* 0x26 */ { REG_DIOMAPPING2, RF_DIOMAPPING2_CLKOUT_OFF }, // DIO5 ClkOut disable for power saving
-    /* 0x28 */ { REG_IRQFLAGS2, RF_IRQFLAGS2_FIFOOVERRUN }, // writing to this bit ensures that the FIFO & status flags are reset
+    /* 0x28 */ { REG_IRQFLAGS2, RF_IRQFLAGS2_FIFONOTEMPTY }, // writing to this bit ensures that the FIFO & status flags are reset
     /* 0x29 */ { REG_RSSITHRESH, 220 }, // must be set to dBm = (-Sensitivity / 2), default is 0xE4 = 228 so -114dBm
     ///* 0x2D */ { REG_PREAMBLELSB, RF_PREAMBLESIZE_LSB_VALUE } // default 3 preamble bytes 0xAAAAAA
     /* 0x2E */ { REG_SYNCCONFIG, RF_SYNC_ON | RF_SYNC_FIFOFILL_AUTO | RF_SYNC_SIZE_2 | RF_SYNC_TOL_0 },
@@ -414,7 +414,8 @@ void RFM69_receiveBegin()
 bool RFM69_receiveDone()
 {
 //ATOMIC_BLOCK(ATOMIC_FORCEON)
-  noInterrupts(); // re-enabled in RFM69_unselect() via setMode() or via RFM69_receiveBegin()
+  //noInterrupts(); // re-enabled in RFM69_unselect() via setMode() or via RFM69_receiveBegin()
+  RFM69_interruptHandler();
   if (_mode == RF69_MODE_RX && payloadLen > 0)
   {
     RFM69_setMode(RF69_MODE_STANDBY); // enables interrupts
@@ -422,7 +423,7 @@ bool RFM69_receiveDone()
   }
   else if (_mode == RF69_MODE_RX) // already in RX no payload yet
   {
-    interrupts(); // explicitly re-enable interrupts
+    //interrupts(); // explicitly re-enable interrupts
     return false;
   }
   RFM69_receiveBegin();
@@ -515,7 +516,7 @@ void RFM69_readAllRegs() {
 
   //... State Variables for intelligent decoding
   uint8_t modeFSK = 0;
-  uint32_t bitRate = 0;
+  uint64_t bitRate = 0;
   uint32_t freqDev = 0;
   uint32_t freqCenter = 0;
 #endif
@@ -651,7 +652,7 @@ void RFM69_readAllRegs() {
     case 0x4: {
       bitRate |= regVal;
       debug_printf("Bit Rate (Chip Rate when Manchester encoding is enabled)\r\nBitRate : ");
-      uint32_t val = 32UL * 1000UL * 1000UL / bitRate;
+      uint64_t val = 32UL * 1000UL * 1000UL / bitRate;
       sprintf(pcBuf, "%lld", val);
       debug_printf(pcBuf);
       debug_printf("\r\n");
@@ -788,7 +789,7 @@ void RFM69_readAllRegs() {
   }
   RFM69_unselect();
   debug_printf("\r\n");
-  debug_printf("\r\n");
+  debug_printf("end read all regs\r\n");
 }
 
 uint8_t RFM69_readTemperature(uint8_t calFactor) // returns centigrade
